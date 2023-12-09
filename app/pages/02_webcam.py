@@ -10,12 +10,10 @@ st.write("This is outside the container")
 container.write("This is inside too")
 
 
-st.subheader('テスト')
-st.subheader('スマホからできるかテスト :blue[cool] :sunglasses:')
+st.subheader('工事中')
+st.subheader('スマホからできるかテスト :blue[a] ')
 
-st.write('Hello, *World!* :sunglasses:')
-
-img_file_buffer = st.camera_input("Take a picture")
+img_file_buffer = st.camera_input("撮影する")
 
 if img_file_buffer is not None:
     # To read image file buffer with OpenCV:

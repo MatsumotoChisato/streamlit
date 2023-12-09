@@ -1,79 +1,95 @@
 # Striamlit を用いたWeb画像処理アプリ
 import streamlit as st
-
 import numpy as np
-from PIL import Image
 import cv2
-
-
-def pil2cv(image):
-    ''' PIL型 -> OpenCV型 '''
-    new_image = np.array(image, dtype=np.uint8)
-    if new_image.ndim == 2:  # モノクロ
-        pass
-    elif new_image.shape[2] == 3:  # カラー
-        new_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
-    elif new_image.shape[2] == 4:  # 透過
-        new_image = cv2.cvtColor(new_image, cv2.COLOR_RGBA2BGRA)
-    return new_image
+from PIL import Image
+import io
 
 with st.sidebar:
-    th = st.slider('Threshold value', 0, 255, 125)
-    st.write("Threshold value", th)
-
-with st.sidebar:
+    th = st.slider('しきい値', 0, 50, 10)
     radio = st.radio(
-        "Choose a binary method",
-        ("Threshold", "Adaptive threshold mean","Adaptive threshold Gaussian",
-        "Otsu' thresholding", "Otsu's thresholding + Gaussian fileter")
-    )
-    erosion=st.button("Erosion",key=1)
-    dilation=st.button("Dilation",key=2)
+        "2値化手法を選択してください",
+        ("gray", "canny"))
+    st.write("canny()エッジ検出機に渡される２つの閾値のうち、大きいほうの閾値0")
+    par1 = st.slider('パラメータ1', 50, 150, 120)
+    st.write("円の中心を検出する際の投票数の閾値．小さくなるほど、より誤検出が起こる可能性アリ")
+    par2 = st.slider('パラメータ2', 5, 25, 13)
 
-st.title('最初のページ')
+with st.sidebar:
+    ratio = st.slider('隠れている粒の比率', 1, 10, 3)
+    st.write("ratio value", ratio)
 '''
-### 画像処理プログラム
+### ブドウ粒数カウント
 '''
-uploaded_image=st.file_uploader("ファイルアップロード", type='jpg')
+
 col1, col2= st.columns(2)
 image_loc = st.empty()
 
-col1.header("Original image")
-col2.header("Binary image")
 with col1:
-    # st.header("A cat")
-    if uploaded_image is not None:
-        image=Image.open(uploaded_image,)
-        img_array = np.array(image)
-        st.image(img_array,caption = '元画像',use_column_width = None)
-        img=pil2cv(image) 
-
-        gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-        ret,th1 = cv2.threshold(gray,th,255,cv2.THRESH_BINARY)
-        th2 = cv2.adaptiveThreshold(gray,255,cv2.ADAPTIVE_THRESH_MEAN_C,\
-        cv2.THRESH_BINARY,11,2)
-        th3 = cv2.adaptiveThreshold(gray,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C,\
-        cv2.THRESH_BINARY,11,2)
-        # image2 = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        ret2,th4 = cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        blur = cv2.GaussianBlur(gray,(5,5),0)
-        ret3,th5 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)   
-
-if radio=="Threshold" and uploaded_image is not None:
-    col2.image(th1)
-elif radio=="Adaptive threshold mean" and uploaded_image is not None:
-    col2.image(th2)
-elif radio=="Adaptive threshold Gaussian" and uploaded_image is not None:
-    col2.image(th3)
-elif radio=="Otsu' thresholding" and uploaded_image is not None:
-    col2.image(th4)
-elif radio=="Otsu's thresholding + Gaussian fileter" and uploaded_image is not None:
-    col2.image(th5)
-
-if erosion:
-    kernel = np.ones((5,5),np.uint8)
-    erodedimage = cv2.erode(th5,kernel,iterations = 1)
+    filename = "grape2.png"
+    img = cv2.imread(filename)
+    
+    # バイナリから読み込み(python3なのでbinaryモードで読み込み)
+    with open(filename, 'rb') as f:
+        binary = f.read()
+    # 一度ndarrayに変換してからdecodeします。reshapeだけしてると思われます.
+    arr = np.asarray(bytearray(binary), dtype=np.uint8)
+    img = cv2.imdecode(arr, -1)  # 'load it as it is'
     
     
+    # バイト列から画像をデコードする
+    #img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+    #1チャンネル（白黒画像に変換）
+    gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray,(5,5),0)
+    #######################################    
+    if radio=="gray":
+        canny_gray = blur
+    elif radio=="canny":
+        #Cannyにてエッジ検出処理（やらなくてもよい）
+        canny_gray = cv2.Canny(blur,th,200)
+
+    #houghで使う画像の指定、後で変えたりする際に変数してしておくと楽。
+    cimg = canny_gray
+    # 画像を表示する
+    col1.subheader("Binary image")
+    col1.image(cimg)
+
+    j = 1
     
-    col1.image(erodedimage)
+    #hough関数
+    circles = cv2.HoughCircles(cimg,cv2.HOUGH_GRADIENT,1,20,param1=par1,param2=par2,minRadius=10,maxRadius=18)
+        # param1 ; canny()エッジ検出機に渡される２つの閾値のうち、大きいほうの閾値0
+        # param2 ; 円の中心を検出する際の投票数の閾値、小さくなるほど、より誤検出が起こる可能性がある。
+        # minRadius ; 検出する円の大きさ最小値
+        # maxRadius ; 検出する円の大きさ最大値
+
+    #if circles is not None and len(circles) > 0:
+    if circles is not None :
+        #型をfloat32からunit16に変更：整数のタイプになるので、後々トラブルが減る。
+        circles = np.uint16(np.around(circles))
+        for i in circles[0,:]:
+            # 外側の円を描く
+            cv2.circle(img,(i[0],i[1]),i[2],(0,255,0),2)
+            # 中心の円を描く
+            cv2.circle(img,(i[0],i[1]),2,(0,0,255),2)
+            # 円の数を数える
+            j = j + 1
+        
+        
+    #円の合計数を表示
+    col2.subheader("reselt 検出数　："+ str(j))       
+    col2.image(img)
+
+
+    #cv2.putText(img,'Count :'+str(j), (30,30), fontType, 1, (0, 0, 0), 1, cv2.LINE_AA)
+
+    ratio = 1+(ratio/10)
+    total = j * ratio
+
+    col2.write(str(ratio))
+    #st.write(type(cv2_img))
+    #cv2.putText(img,'ratio :'+str(ratio), (30,60), fontType, 1, (0, 0, 0), 1, cv2.LINE_AA)
+    col2.write("比率 : " + str(ratio))
+    #cv2.putText(img,'Total :'+str(total), (30,90), fontType, 1, (0, 0, 0), 1, cv2.LINE_AA)
+    col2.write("合計 : " + str(total))
